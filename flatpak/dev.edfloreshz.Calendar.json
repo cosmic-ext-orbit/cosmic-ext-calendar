@@ -39,7 +39,7 @@
         {
           "type": "dir",
           "path": "..",
-          "skip": [".cargo", ".git", ".flatpak-builder", ".flatpak-cargo", "target", "vendor", "vendor.tar"]
+          "skip": [".cargo", ".git", ".flatpak-builder", ".flatpak-cargo", "dist", "target", "vendor", "vendor.tar"]
         },
         "cargo-sources.json"
       ]

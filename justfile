@@ -112,6 +112,12 @@ flatpak-cargo-sources:
 flatpak *args:
     flatpak-builder --user --force-clean {{args}} .flatpak-builder/build-dir flatpak/{{appid}}.json
 
+# Builds an installable Flatpak bundle under dist.
+flatpak-bundle *args:
+    mkdir -p dist
+    just flatpak --repo=.flatpak-builder/repo {{args}}
+    flatpak build-bundle .flatpak-builder/repo dist/{{appid}}.flatpak {{appid}}
+
 # Build the AppImage, zsync metadata, and checksums under dist.
 appimage:
     #!/usr/bin/env bash
