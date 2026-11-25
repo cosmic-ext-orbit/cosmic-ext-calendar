@@ -33,7 +33,6 @@ pub enum Action {
     NewEvent,
     Search,
     Refresh,
-    AddAccount,
     CloseWindow,
     ToggleSidebar,
     Dismiss,
@@ -103,7 +102,7 @@ static BINDINGS: LazyLock<Vec<Binding>> = LazyLock::new(|| {
         main(General, Search, &[Ctrl], c("f")),
         main(General, Refresh, &[Ctrl], c("r")),
         main(General, Refresh, &[], k(F5)),
-        main(General, AddAccount, &[Ctrl, Shift], c("a")),
+        main(General, Menu(MenuAction::Accounts), &[Ctrl, Shift], c("a")),
         main(General, Menu(MenuAction::ImportIcs), &[Ctrl, Shift], c("i")),
         main(General, Menu(MenuAction::ExportIcs), &[Ctrl, Shift], c("e")),
         main(
@@ -255,6 +254,7 @@ impl Action {
                 MenuAction::ImportIcs => fl!("import-ics"),
                 MenuAction::ExportIcs => fl!("export-ics"),
                 MenuAction::ArchivedCalendars => fl!("archived-calendars"),
+                MenuAction::Accounts => fl!("manage-accounts"),
                 MenuAction::Settings => fl!("settings"),
                 MenuAction::Shortcuts => fl!("keyboard-shortcuts"),
                 MenuAction::About => fl!("about"),
@@ -263,7 +263,6 @@ impl Action {
             Self::NewEvent => fl!("create-event"),
             Self::Search => fl!("search"),
             Self::Refresh => fl!("shortcut-refresh"),
-            Self::AddAccount => fl!("manage-accounts"),
             Self::CloseWindow => fl!("shortcut-close-window"),
             Self::Dismiss => fl!("shortcut-dismiss"),
             Self::CloseDialog => fl!("shortcut-close-dialog"),
@@ -441,7 +440,6 @@ impl AppModel {
                 tasks.push(self.update(Message::Accounts(AccountsAction::Discover)));
                 return Task::batch(tasks);
             }
-            AddAccount => Message::Accounts(AccountsAction::OpenAccountsApp),
             CloseWindow => {
                 return self.core.main_window_id().map_or_else(Task::none, |id| {
                     Task::batch([self.update(Message::MainWindowClosed), window::close(id)])

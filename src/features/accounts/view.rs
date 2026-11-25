@@ -13,11 +13,11 @@ use crate::{
 
 use super::{AccountsAction, FormField, SyncStatus};
 
-/// Accounts section rendered inside Calendar's Settings drawer.
+/// Accounts page rendered inside Calendar's dedicated context drawer.
 ///
 /// Accounts are created, reconnected, and removed here. This section lists
 /// accounts exposing the Calendar service and lets each one be paused locally.
-pub fn settings_view(app: &AppModel) -> Element<'_, Message> {
+pub fn accounts_view(app: &AppModel) -> Element<'_, Message> {
     let mut section = widget::settings::section().title(fl!("accounts"));
     if !app.accounts_checked() {
         section = section.add(widget::text::body(fl!("accounts-checking")));

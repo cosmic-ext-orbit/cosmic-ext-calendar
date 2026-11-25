@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
-use super::super::{AppModel, CalendarPopup, ContextPage, Message};
+use super::super::{AppModel, CalendarPopup, Message};
 use crate::config::Config;
 use crate::features::accounts::{self as accounts_feature, AccountsAction, FormField};
 use crate::features::calendar_management::model::CalendarKey;
@@ -49,11 +49,6 @@ impl AppModel {
                 return self.sync_active_accounts();
             }
             AccountsAction::Changed => return rediscover(),
-            AccountsAction::OpenAccountsApp => {
-                self.show_context_page(ContextPage::Settings);
-                self.account_form = Some(Default::default());
-                self.account_action_error = None;
-            }
             AccountsAction::AddProvider(provider) => {
                 self.account_action_error = None;
                 return Task::perform(accounts_feature::begin_provider(provider), |result| {

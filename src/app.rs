@@ -367,6 +367,7 @@ impl cosmic::Application for AppModel {
                         None,
                         MenuAction::ArchivedCalendars,
                     ),
+                    menu::Item::Button(fl!("manage-accounts"), None, MenuAction::Accounts),
                     menu::Item::Button(fl!("settings"), None, MenuAction::Settings),
                     menu::Item::Divider,
                     menu::Item::Button(fl!("keyboard-shortcuts"), None, MenuAction::Shortcuts),
@@ -566,6 +567,11 @@ impl cosmic::Application for AppModel {
                 Message::ToggleContextPage(ContextPage::Settings),
             )
             .title(fl!("settings")),
+            ContextPage::Accounts => context_drawer::context_drawer(
+                accounts_feature::view::accounts_view(self),
+                Message::ToggleContextPage(ContextPage::Accounts),
+            )
+            .title(fl!("accounts")),
             ContextPage::IcsImport => context_drawer::context_drawer(
                 self.ics_import_view(),
                 Message::ToggleContextPage(ContextPage::IcsImport),
@@ -1307,8 +1313,15 @@ impl AppModel {
                 ])
                 .spacing(spacing().space_xs),
             );
-        let accounts_section = accounts_feature::view::settings_view(self);
-        widget::settings::view_column(vec![accounts_section, appearance.into(), section.into(), location_settings.into()]).into()
+        let accounts_section = widget::settings::section().title(fl!("accounts")).add(
+            widget::settings::item::builder(fl!("manage-accounts"))
+                .description(fl!("manage-accounts-description"))
+                .control(
+                    widget::button::standard(fl!("open"))
+                        .on_press(Message::ToggleContextPage(ContextPage::Accounts)),
+                ),
+        );
+        widget::settings::view_column(vec![accounts_section.into(), appearance.into(), section.into(), location_settings.into()]).into()
     }
 
     pub(crate) fn accounts(&self) -> &[accounts_feature::Account] {
@@ -1586,6 +1599,7 @@ pub enum Tab {
 pub enum ContextPage {
     #[default]
     About,
+    Accounts,
     ArchivedCalendars,
     DayAgenda,
     Settings,
@@ -1597,6 +1611,7 @@ pub enum ContextPage {
 pub enum MenuAction {
     NewCalendar,
     About,
+    Accounts,
     Settings,
     Shortcuts,
     Quit,
@@ -1614,6 +1629,7 @@ impl menu::action::MenuAction for MenuAction {
                 Message::CalendarManagement(CalendarManagementMessage::OpenNewCalendarForm)
             }
             MenuAction::Settings => Message::ToggleContextPage(ContextPage::Settings),
+            MenuAction::Accounts => Message::ToggleContextPage(ContextPage::Accounts),
             MenuAction::About => Message::ToggleContextPage(ContextPage::About),
             MenuAction::Shortcuts => Message::ToggleContextPage(ContextPage::Shortcuts),
             MenuAction::Quit => Message::Quit,

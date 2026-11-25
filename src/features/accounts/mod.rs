@@ -171,7 +171,6 @@ pub enum AccountsAction {
     FormFieldChanged(FormField, String),
     SubmitCalDav,
     CancelForm,
-    OpenAccountsApp,
     ActionFailed(String),
 }
 
