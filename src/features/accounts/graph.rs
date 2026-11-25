@@ -3,13 +3,13 @@
 use std::collections::HashSet;
 use std::time::Duration;
 
-use accounts::{models::Service, AccountsClient};
+use accounts::Service;
 use reqwest::{Client, StatusCode, Url};
 use serde::{de::DeserializeOwned, Deserialize};
 use time::{Date, Duration as TimeDuration, OffsetDateTime};
 use uuid::Uuid;
 
-use super::{Account, Calendar, Error, Snapshot};
+use super::{Account, Calendar, Error, Snapshot, manager};
 use crate::features::{
     calendar_management::model::{CalendarKey, Source},
     event::model::{Event, EventKind, EventTime, ExternalRef, Reminder},
@@ -20,7 +20,7 @@ const GRAPH: &str = "https://graph.microsoft.com/v1.0/";
 const MAX_PAGE_BYTES: usize = 16 * 1024 * 1024;
 
 pub(super) async fn sync(account: &Account) -> Result<Snapshot, Error> {
-    let broker = AccountsClient::connect().await.map_err(Error::from)?;
+    let manager = manager().await?;
     let client = Client::builder()
         .redirect(reqwest::redirect::Policy::none())
         .timeout(Duration::from_secs(30))
@@ -28,10 +28,9 @@ pub(super) async fn sync(account: &Account) -> Result<Snapshot, Error> {
         .map_err(|_| Error::Failed)?;
     let now = OffsetDateTime::now_utc();
     for refresh in [false, true] {
-        let (token, _) = broker
-            .access_token(&account.id, &Service::Calendar, refresh)
-            .await
-            .map_err(Error::from)?;
+        let token = manager
+            .access_token(account.id, Service::Calendar, refresh)
+            .await?;
         let result = fetch(&client, &token, account, now).await;
         if !refresh && matches!(result, Err(Error::NeedsReauth)) {
             continue;

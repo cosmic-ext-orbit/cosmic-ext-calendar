@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
+use accounts::{
+    provider::providers_for, ui::provider_label, Provider as ManagedProvider, Service,
+};
 use cosmic::iced::{widget::text::Wrapping, Alignment, Length};
 use cosmic::{widget, Element};
 
@@ -8,13 +11,12 @@ use crate::{
     fl,
 };
 
-use super::{AccountsAction, SyncStatus};
+use super::{AccountsAction, FormField, SyncStatus};
 
 /// Accounts section rendered inside Calendar's Settings drawer.
 ///
-/// Accounts are created and removed in the Accounts app. This section only
-/// lists accounts that expose the Calendar service and lets the user pause
-/// each one locally.
+/// Accounts are created, reconnected, and removed here. This section lists
+/// accounts exposing the Calendar service and lets each one be paused locally.
 pub fn settings_view(app: &AppModel) -> Element<'_, Message> {
     let mut section = widget::settings::section().title(fl!("accounts"));
     if !app.accounts_checked() {
@@ -25,10 +27,32 @@ pub fn settings_view(app: &AppModel) -> Element<'_, Message> {
         section = section.add(widget::text::body(fl!("no-accounts-connected")));
     }
 
+    if let Some(error) = app.account_action_error() {
+        section = section.add(widget::text::body(fl!(
+            "account-action-error",
+            error = error
+        )));
+    }
+
+    if let Some(request) = app.account_auth() {
+        let state = request.state.clone();
+        section = section.add(
+            widget::settings::item::builder(fl!(
+                "accounts-waiting",
+                provider = provider_label(request.provider)
+            ))
+            .description(fl!("accounts-waiting-description"))
+            .control(
+                widget::button::standard(fl!("accounts-cancel"))
+                    .on_press(Message::Accounts(AccountsAction::CancelAuth(state))),
+            ),
+        );
+    }
+
     for account in app.accounts() {
         let id = account.id;
         let enabled = app.account_locally_enabled(id);
-        let mut controls = widget::row::with_capacity(2)
+        let mut controls = widget::row::with_capacity(3)
             .spacing(cosmic::theme::spacing().space_xs)
             .align_y(Alignment::Center);
         if enabled {
@@ -70,18 +94,90 @@ pub fn settings_view(app: &AppModel) -> Element<'_, Message> {
         section = section.add(
             widget::settings::item::builder(address)
                 .description(account.provider_label())
-                .control(controls.push(toggle)),
+                .control(
+                    controls
+                        .push(
+                            widget::button::standard(fl!("accounts-reconnect"))
+                                .on_press(Message::Accounts(AccountsAction::Reconnect(id))),
+                        )
+                        .push(
+                            widget::button::destructive(fl!("accounts-remove"))
+                                .on_press(Message::Accounts(AccountsAction::Remove(id))),
+                        )
+                        .push(toggle),
+                ),
         );
     }
 
-    section
-        .add(
-            widget::settings::item::builder(fl!("manage-accounts"))
-                .description(fl!("manage-accounts-description"))
-                .control(
-                    widget::button::standard(fl!("open"))
-                        .on_press(Message::Accounts(AccountsAction::OpenAccountsApp)),
+    let mut providers = widget::row::with_capacity(4)
+        .spacing(cosmic::theme::spacing().space_xs);
+    for provider in providers_for(Service::Calendar) {
+        let label = if provider == ManagedProvider::CustomCalDav {
+            fl!("accounts-custom-caldav")
+        } else {
+            fl!("accounts-sign-in", provider = provider_label(provider))
+        };
+        let message = if provider == ManagedProvider::CustomCalDav {
+            Message::Accounts(AccountsAction::AddCalDav(Default::default()))
+        } else {
+            Message::Accounts(AccountsAction::AddProvider(provider))
+        };
+        providers = providers.push(widget::button::standard(label).on_press(message));
+    }
+    section = section.add(
+        widget::settings::item::builder(fl!("accounts-add"))
+            .description(fl!("manage-accounts-description"))
+            .control(providers),
+    );
+
+    if let Some(form) = app.account_form() {
+        section = section
+            .add(
+                widget::settings::item::builder(fl!("accounts-url"))
+                    .control(widget::text_input(fl!("accounts-url"), &form.url).on_input(|value| {
+                        Message::Accounts(AccountsAction::FormFieldChanged(
+                            FormField::Url,
+                            value,
+                        ))
+                    })),
+            )
+            .add(
+                widget::settings::item::builder(fl!("accounts-username"))
+                    .control(
+                        widget::text_input(fl!("accounts-username"), &form.username).on_input(
+                            |value| {
+                                Message::Accounts(AccountsAction::FormFieldChanged(
+                                    FormField::Username,
+                                    value,
+                                ))
+                            },
+                        ),
+                    ),
+            )
+            .add(
+                widget::settings::item::builder(fl!("accounts-password")).control(
+                    widget::text_input::secure_input(fl!("accounts-password"), &form.password, None, true)
+                        .on_input(|value| {
+                            Message::Accounts(AccountsAction::FormFieldChanged(
+                                FormField::Password,
+                                value,
+                            ))
+                        }),
                 ),
-        )
-        .into()
+            )
+            .add(
+                widget::row::with_capacity(2)
+                    .spacing(cosmic::theme::spacing().space_xs)
+                    .push(
+                        widget::button::standard(fl!("accounts-cancel"))
+                            .on_press(Message::Accounts(AccountsAction::CancelForm)),
+                    )
+                    .push(
+                        widget::button::suggested(fl!("accounts-connect"))
+                            .on_press(Message::Accounts(AccountsAction::SubmitCalDav)),
+                    ),
+            );
+    }
+
+    section.into()
 }

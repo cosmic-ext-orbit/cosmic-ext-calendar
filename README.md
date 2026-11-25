@@ -22,18 +22,31 @@ A [justfile](./justfile) is included by default for the [casey/just][just] comma
 
 ## Online calendars
 
-Add your account in Accounts for COSMIC, then open **Settings → Accounts** in Calendar.
-Enabled accounts refresh automatically. Use the refresh button beside an account in the
-sidebar to retry immediately.
+Calendar owns its account data and credentials through the embedded `accounts` library.
+Open **Settings → Accounts** to sign in, reconnect, remove, or pause an account. No
+separate Accounts installation or broker is required. Enabled accounts refresh
+automatically; use the refresh button beside an account in the sidebar to retry
+immediately.
+
+OAuth client registrations are supplied by the packager, not committed to this
+repository. Set `ACCOUNTS_GOOGLE_CALENDAR_CLIENT_ID` and
+`ACCOUNTS_MICROSOFT_CALENDAR_CLIENT_ID` before launching Calendar. For registrations
+that require a secret, also set the matching `_CLIENT_SECRET`; desktop clients may use
+PKCE without a secret. Google desktop registrations must use the loopback redirect
+`http://127.0.0.1/callback`.
 
 Microsoft accounts use Microsoft Graph and the delegated `Calendars.Read` permission.
-If this permission was added after sign-in, reconnect the account in Accounts for COSMIC.
-Calendar shows Microsoft event occurrences from roughly one year before today through
-one year after today.
+If this permission was added after sign-in, use **Reconnect** in Calendar. Calendar
+shows Microsoft event occurrences from roughly one year before today through one year
+after today.
 
-Online calendars are read-only. Calendar keeps the current sync results in memory. The separate notification worker delivers alerts for local calendars, and the running Calendar app also checks alerts for synced events.
+Sign-in fails entirely if secure storage is unavailable or locked; credentials are
+never stored in plaintext or kept only in memory. Online calendars are read-only.
+Calendar keeps the current sync results in memory. The separate notification worker
+delivers alerts for local calendars, and the running Calendar app also checks alerts
+for synced events.
 
-The Flatpak connects to the Accounts service installed on the host. Its **Open** button requires an Accounts installation that registers the `cosmic-accounts` URI handler.
+The Flatpak uses the Secret portal for encrypted, app-private credential storage.
 
 ## Translators
 

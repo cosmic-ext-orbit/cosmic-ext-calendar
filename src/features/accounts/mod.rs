@@ -5,14 +5,21 @@ mod graph;
 pub mod subscription;
 pub mod view;
 
-use crate::{features::event::model::Event, fl};
-use accounts::{models::Service, AccountsClient, AccountsError};
+use accounts::{
+    Account as ManagedAccount, Accounts, CalDavSettings, Config, Endpoint, Error as AccountsError,
+    Provider, SecretString, Service,
+};
+use tokio::sync::OnceCell;
 use uuid::Uuid;
 
-/// Calendar's local view of an Accounts account.
-///
-/// The broker owns the account and its settings; Calendar only keeps the
-/// fields it needs to present and filter remote calendars.
+pub use accounts::AuthRequest;
+
+use crate::{features::event::model::Event, fl};
+
+const APP_ID: &str = "dev.edfloreshz.Calendar";
+static MANAGER: OnceCell<Accounts> = OnceCell::const_new();
+
+/// Calendar's local view of an embedded account.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Account {
     pub id: Uuid,
@@ -33,79 +40,94 @@ impl Account {
         match self.provider.as_str() {
             "google" => "Google",
             "microsoft" => "Microsoft",
-            accounts::models::CUSTOM_CALDAV_PROVIDER => "CalDAV",
+            "custom-caldav" => "CalDAV",
             provider => provider,
         }
     }
 
-    fn from_broker(account: &accounts::models::Account) -> Self {
-        let server = account
-            .caldav_url
-            .as_deref()
-            .and_then(|url| reqwest::Url::parse(url).ok())
-            .and_then(|url| {
-                url.host_str().map(|host| {
-                    url.port()
-                        .map_or_else(|| host.to_owned(), |port| format!("{host}:{port}"))
-                })
-            });
+    fn from_managed(account: &ManagedAccount) -> Self {
+        let server = match &account.endpoint {
+            Endpoint::CalDav(settings) => reqwest::Url::parse(&settings.url)
+                .ok()
+                .and_then(|url| {
+                    url.host_str().map(|host| {
+                        url.port()
+                            .map_or_else(|| host.to_owned(), |port| format!("{host}:{port}"))
+                    })
+                }),
+            _ => None,
+        };
         Self {
             id: account.id,
             email: account.email.clone(),
-            provider: account.provider.clone(),
+            provider: account.provider.as_str().to_owned(),
             server,
         }
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Error {
-    Unavailable,
-    UpgradeRequired,
-    Disabled,
+    StorageUnavailable,
+    Configuration(String),
+    Authentication(String),
     NeedsReauth,
-    AccessDenied,
     ServerAccessDenied,
     GoogleAccessDenied,
     GoogleApiDisabled,
     GoogleInsufficientScope,
-    ConsentTimeout,
+    Cancelled,
     Failed,
     Unsupported,
     MicrosoftAccessDenied,
+    Storage(String),
 }
 
 impl From<AccountsError> for Error {
     fn from(error: AccountsError) -> Self {
+        let description = error.to_string();
         match error {
-            AccountsError::Unavailable => Self::Unavailable,
-            AccountsError::UpgradeRequired => Self::UpgradeRequired,
-            AccountsError::Disabled => Self::Disabled,
-            AccountsError::NeedsReauth => Self::NeedsReauth,
-            AccountsError::AccessDenied => Self::AccessDenied,
-            AccountsError::ConsentTimeout => Self::ConsentTimeout,
-            AccountsError::Failed => Self::Failed,
-            AccountsError::Unsupported => Self::Unsupported,
+            AccountsError::StorageUnavailable(_) => Self::StorageUnavailable,
+            AccountsError::StorageCorrupt(message) => Self::Storage(message),
+            AccountsError::InvalidClientConfig(message) => Self::Configuration(message),
+            AccountsError::MissingClientConfig(provider, service) => {
+                Self::Configuration(format!("no client configuration for {provider:?}/{service}"))
+            }
+            AccountsError::AuthenticationFailed(message) => Self::Authentication(message),
+            AccountsError::InvalidState | AccountsError::CallbackTimeout => {
+                Self::Authentication(description)
+            }
+            AccountsError::FeatureDisabled(_) | AccountsError::UnsupportedProvider(_, _) => {
+                Self::Unsupported
+            }
+            AccountsError::AccountNotFound(_) | AccountsError::AccountAlreadyExists(_, _) => {
+                Self::Failed
+            }
+            AccountsError::NeedsReauth(_) => Self::NeedsReauth,
+            AccountsError::Cancelled => Self::Cancelled,
+            AccountsError::InvalidEndpoint(message)
+            | AccountsError::Network(message)
+            | AccountsError::ProviderResponse(message) => Self::Storage(message),
         }
     }
 }
 
 impl Error {
-    pub fn text(self) -> String {
+    pub fn text(&self) -> String {
         match self {
-            Self::Unavailable => fl!("accounts-error-unavailable"),
-            Self::UpgradeRequired => fl!("accounts-error-upgrade"),
-            Self::Disabled => fl!("accounts-error-disabled"),
+            Self::StorageUnavailable => fl!("accounts-error-unavailable"),
             Self::NeedsReauth => fl!("accounts-error-needs-reauth"),
-            Self::AccessDenied => fl!("accounts-error-access-denied"),
             Self::ServerAccessDenied => fl!("accounts-error-server-denied"),
             Self::GoogleAccessDenied => fl!("accounts-error-google-denied"),
             Self::GoogleApiDisabled => fl!("accounts-error-google-api-disabled"),
             Self::GoogleInsufficientScope => fl!("accounts-error-google-scope"),
-            Self::ConsentTimeout => fl!("accounts-error-consent-timeout"),
             Self::Failed => fl!("accounts-error-failed"),
             Self::Unsupported => fl!("accounts-error-unsupported"),
             Self::MicrosoftAccessDenied => fl!("accounts-error-microsoft-denied"),
+            Self::Configuration(message)
+            | Self::Authentication(message)
+            | Self::Storage(message) => message.clone(),
+            Self::Cancelled => "Sign-in was cancelled.".into(),
         }
     }
 }
@@ -135,11 +157,36 @@ pub enum AccountsAction {
     Discover,
     Discovered(Result<Discovery, Error>),
     Changed,
-    OpenAccountsApp,
-    AccountsAppOpened(Result<(), String>),
     SetLocallyEnabled(Uuid, bool),
     Sync(Uuid),
     Synced(Uuid, u64, Result<Snapshot, Error>),
+    AddProvider(Provider),
+    AuthStarted(Result<AuthRequest, String>),
+    AuthCompleted(Result<ManagedAccount, String>),
+    CancelAuth(String),
+    Reconnect(Uuid),
+    Remove(Uuid),
+    Removed(Result<Uuid, String>),
+    AddCalDav(AccountForm),
+    FormFieldChanged(FormField, String),
+    SubmitCalDav,
+    CancelForm,
+    OpenAccountsApp,
+    ActionFailed(String),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum FormField {
+    Url,
+    Username,
+    Password,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct AccountForm {
+    pub url: String,
+    pub username: String,
+    pub password: String,
 }
 
 #[derive(Clone, Debug)]
@@ -148,46 +195,85 @@ pub struct Discovery {
     pub watched_ids: Vec<Uuid>,
 }
 
-/// Keep enabled Calendar accounts discoverable even if their endpoint cannot
-/// be opened. Sync validates the endpoint and reports its error per account.
+pub async fn manager() -> Result<&'static Accounts, Error> {
+    MANAGER
+        .get_or_try_init(|| async {
+            let config = Config::new(APP_ID)
+                .with_client_from_env(Provider::Google, Service::Calendar)
+                .with_client_from_env(Provider::Microsoft, Service::Calendar);
+            Accounts::new(config).await
+        })
+        .await
+        .map_err(Error::from)
+}
+
+fn open_url(request: &AuthRequest) -> Result<(), Error> {
+    open::that(&request.url)
+        .map_err(|error| Error::Authentication(format!("could not open browser: {error}")))
+}
+
 pub async fn discover() -> Result<Discovery, Error> {
-    let client = AccountsClient::connect().await.map_err(Error::from)?;
-    let (eligible, mut watched_ids) = match client.list_accounts().await {
-        Ok(accounts) => {
-            let watched = accounts.iter().map(|account| account.id).collect();
-            let eligible = accounts
-                .into_iter()
-                .filter(|account| account.is_enabled_for(&Service::Calendar))
-                .collect::<Vec<_>>();
-            (eligible, watched)
-        }
-        Err(_) => {
-            // The tolerant helper still returns usable accounts when one
-            // account object could not be read by the strict listing.
-            let eligible: Vec<_> = client
-                .list_calendar_accounts()
-                .await
-                .map_err(Error::from)?
-                .into_iter()
-                .map(|(account, _)| account)
-                .collect();
-            let watched = eligible
-                .iter()
-                .map(|account| account.id)
-                .collect::<Vec<_>>();
-            (eligible, watched)
-        }
-    };
-    watched_ids.sort_unstable();
-    watched_ids.dedup();
-    let mut accounts: Vec<_> = eligible.iter().map(Account::from_broker).collect();
-    accounts.sort_by(|a, b| (a.address(), a.id).cmp(&(b.address(), b.id)));
+    let accounts = manager().await?;
+    let managed = accounts.list(Service::Calendar).await;
+    let watched_ids: Vec<_> = managed.iter().map(|account| account.id).collect();
+    let views: Vec<_> = managed.iter().map(Account::from_managed).collect();
     Ok(Discovery {
-        accounts,
+        accounts: views,
         watched_ids,
     })
 }
 
+pub async fn begin_provider(provider: Provider) -> Result<AuthRequest, Error> {
+    let request = manager().await?.begin_auth(provider, Service::Calendar).await?;
+    open_url(&request)?;
+    Ok(request)
+}
+
+pub async fn reconnect(id: Uuid) -> Result<AuthRequest, Error> {
+    let request = manager().await?.reconnect(id).await?;
+    open_url(&request)?;
+    Ok(request)
+}
+
+pub async fn complete(request: AuthRequest) -> Result<ManagedAccount, Error> {
+    manager().await?.complete_auth(request).await.map_err(Error::from)
+}
+
+pub fn cancel(state: &str) {
+    if let Some(manager) = MANAGER.get() {
+        let state = state.to_owned();
+        tokio::spawn(async move {
+            manager.cancel_auth(&state).await;
+        });
+    }
+}
+
+pub async fn remove(id: Uuid) -> Result<Uuid, Error> {
+    manager().await?.remove(id).await?;
+    Ok(id)
+}
+
+pub async fn set_enabled(id: Uuid, enabled: bool) -> Result<(), Error> {
+    manager()
+        .await?
+        .set_enabled(id, enabled)
+        .await
+        .map_err(Error::from)
+}
+
+pub async fn add_caldav(form: AccountForm) -> Result<ManagedAccount, Error> {
+    manager()
+        .await?
+        .add_caldav_account(
+            CalDavSettings { url: form.url },
+            form.username,
+            SecretString::new(form.password),
+        )
+        .await
+        .map_err(Error::from)
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum SyncStatus {
     Running {
         request_id: u64,
@@ -199,24 +285,8 @@ pub enum SyncStatus {
 impl SyncStatus {
     pub fn error(&self) -> Option<Error> {
         match self {
-            Self::Running { previous_error, .. } => *previous_error,
-            Self::Finished(_, error) => *error,
+            Self::Running { previous_error, .. } => previous_error.clone(),
+            Self::Finished(_, error) => error.clone(),
         }
-    }
-}
-
-pub async fn open_add_account() -> Result<(), String> {
-    if std::path::Path::new("/.flatpak-info").is_file() {
-        use cosmic::dialog::ashpd::desktop::open_uri::OpenFileRequest;
-
-        let uri = reqwest::Url::parse("cosmic-accounts://add-account")
-            .expect("valid Accounts activation URI");
-        OpenFileRequest::default()
-            .send_uri(&uri)
-            .await
-            .and_then(|request| request.response())
-            .map_err(|error| error.to_string())
-    } else {
-        accounts::ui::open_add_account().map_err(|error| error.to_string())
     }
 }

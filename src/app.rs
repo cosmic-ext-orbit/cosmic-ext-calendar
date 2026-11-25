@@ -145,8 +145,8 @@ pub struct AppModel {
     search_query: String,
     checking_alerts: bool,
     keep_running: bool,
-    // Accounts-backed calendar sources. The broker owns account state; these
-    // fields are a local cache used by Settings and event filtering.
+    // Accounts-backed calendar sources. The embedded manager owns account
+    // state; these fields are a local cache used by Settings and filtering.
     accounts: Vec<accounts_feature::Account>,
     accounts_error: Option<accounts_feature::Error>,
     accounts_checked: bool,
@@ -155,6 +155,9 @@ pub struct AppModel {
     account_sync: HashMap<uuid::Uuid, accounts_feature::SyncStatus>,
     next_account_sync: u64,
     discovering_accounts: bool,
+    account_auth: Option<accounts_feature::AuthRequest>,
+    account_form: Option<accounts_feature::AccountForm>,
+    account_action_error: Option<String>,
 }
 
 /// Messages emitted by the application and its widgets.
@@ -290,6 +293,9 @@ impl cosmic::Application for AppModel {
             account_sync: HashMap::new(),
             next_account_sync: 0,
             discovering_accounts: false,
+            account_auth: None,
+            account_form: None,
+            account_action_error: None,
         };
 
         let mut tasks = Vec::new();
@@ -801,6 +807,14 @@ impl cosmic::Application for AppModel {
             };
             return cosmic::task::message(message);
         }
+        if self.account_form.is_some() {
+            return cosmic::task::message(Message::Accounts(AccountsAction::CancelForm));
+        }
+        if let Some(request) = self.account_auth.as_ref() {
+            return cosmic::task::message(Message::Accounts(AccountsAction::CancelAuth(
+                request.state.clone(),
+            )));
+        }
         if self.calendar_popup.take().is_some() {
             return Task::none();
         }
@@ -1305,12 +1319,24 @@ impl AppModel {
         self.accounts_checked
     }
 
-    pub(crate) fn accounts_error(&self) -> Option<accounts_feature::Error> {
-        self.accounts_error
+    pub(crate) fn accounts_error(&self) -> Option<&accounts_feature::Error> {
+        self.accounts_error.as_ref()
     }
 
     pub(crate) fn account_locally_enabled(&self, id: uuid::Uuid) -> bool {
         !self.config.disabled_accounts.contains(&id)
+    }
+
+    pub(crate) fn account_auth(&self) -> Option<&accounts_feature::AuthRequest> {
+        self.account_auth.as_ref()
+    }
+
+    pub(crate) fn account_form(&self) -> Option<&accounts_feature::AccountForm> {
+        self.account_form.as_ref()
+    }
+
+    pub(crate) fn account_action_error(&self) -> Option<&str> {
+        self.account_action_error.as_deref()
     }
 
     fn remote_calendar_is_visible(&self, account_id: uuid::Uuid, calendar_id: &str) -> bool {
@@ -1361,7 +1387,10 @@ impl AppModel {
         let ids: Vec<_> = self.active_accounts.iter().copied().filter(|id| {
             match self.account_sync.get(id) {
                 None => true,
-                Some(SyncStatus::Finished(at, None | Some(Error::Failed | Error::Unavailable))) => {
+                Some(SyncStatus::Finished(
+                    at,
+                    None | Some(Error::Failed | Error::StorageUnavailable),
+                )) => {
                     at.elapsed() >= std::time::Duration::from_secs(300)
                 }
                 _ => false,

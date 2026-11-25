@@ -1,12 +1,14 @@
 use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 
-use accounts::{AccountsClient, CalendarCredentials};
+use accounts::CalendarCredentials;
+#[cfg(test)]
+use accounts::SecretString;
 use reqwest::{header, Client, Method, StatusCode, Url};
 use roxmltree::{Document, Node};
 use uuid::Uuid;
 
-use super::{Account, Calendar, Error, Snapshot};
+use super::{Account, Calendar, Error, Snapshot, manager};
 use crate::features::{
     calendar_management::model::{CalendarKey, Source},
     event::model::{Event, EventKind, ExternalRef},
@@ -39,31 +41,32 @@ impl From<Error> for RequestError {
 }
 
 pub async fn sync(account: &Account, previous: Snapshot) -> Result<Snapshot, Error> {
-    let broker = AccountsClient::connect().await.map_err(Error::from)?;
     let http = Client::builder()
         .redirect(reqwest::redirect::Policy::none())
         .timeout(Duration::from_secs(30))
         .build()
         .map_err(|_| Error::Failed)?;
 
-    let credentials = broker
-        .calendar_credentials(&account.id, false)
-        .await
-        .map_err(Error::from)?;
+    let credentials = manager().await?.calendar_credentials(account.id).await?;
     match fetch(&http, account, &credentials, &previous).await {
         Err(RequestError::Unauthorized)
             if matches!(credentials, CalendarCredentials::OAuth { .. }) =>
         {
-            let refreshed = broker
-                .calendar_credentials(&account.id, true)
-                .await
-                .map_err(Error::from)?;
+            let refreshed = refresh_credentials(account).await?;
             fetch(&http, account, &refreshed, &previous)
                 .await
                 .map_err(request_error)
         }
         result => result.map_err(request_error),
     }
+}
+
+async fn refresh_credentials(account: &Account) -> Result<CalendarCredentials, Error> {
+    let manager = manager().await?;
+    manager
+        .access_token(account.id, accounts::Service::Calendar, true)
+        .await?;
+    manager.calendar_credentials(account.id).await.map_err(Error::from)
 }
 
 fn request_error(error: RequestError) -> Error {
@@ -113,8 +116,8 @@ impl Session<'_> {
             let request = match self.credentials {
                 CalendarCredentials::Basic {
                     username, password, ..
-                } => request.basic_auth(username, Some(password)),
-                CalendarCredentials::OAuth { token, .. } => request.bearer_auth(token),
+                } => request.basic_auth(username, Some(password.expose())),
+                CalendarCredentials::OAuth { token, .. } => request.bearer_auth(token.expose()),
             };
             let mut response = request.send().await.map_err(|_| Error::Failed)?;
             let status = response.status();
@@ -270,7 +273,8 @@ fn forbidden_error(google: bool, insufficient_scope: bool, body: &str) -> Reques
 
 fn endpoint(account: &Account, credentials: &CalendarCredentials) -> Result<Url, Error> {
     let uri = match credentials {
-        CalendarCredentials::Basic { uri, .. } | CalendarCredentials::OAuth { uri, .. } => uri,
+        CalendarCredentials::Basic { url, .. } => url,
+        CalendarCredentials::OAuth { uri, .. } => uri,
     };
     let mut origin = Url::parse(uri).map_err(|_| Error::Unsupported)?;
     if origin.scheme() != "https"
@@ -615,8 +619,8 @@ mod tests {
         };
         let credentials = CalendarCredentials::OAuth {
             uri: "https://apidata.googleusercontent.com/caldav/v2/".into(),
-            token: String::new(),
-            expires_at: 0,
+            token: SecretString::new(String::new()),
+            expires_at: None,
         };
         assert_eq!(
             endpoint(&account, &credentials).unwrap().as_str(),
@@ -628,9 +632,9 @@ mod tests {
     async fn replacing_a_snapshot_preserves_identity_and_removes_deleted_events() {
         let url = Url::parse("https://example.org/calendar/").unwrap();
         let credentials = CalendarCredentials::Basic {
-            uri: url.to_string(),
+            url: url.to_string(),
             username: "me".into(),
-            password: "test".into(),
+            password: SecretString::new("test"),
         };
         let client = Client::new();
         let session = Session {

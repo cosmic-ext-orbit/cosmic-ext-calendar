@@ -10,7 +10,7 @@ repository = "https://github.com/cosmic-utils/cosmic-ext-calendar"
 vergen = { version = "8", features = ["git", "gitcl"] }
 
 [dependencies]
-accounts = { git = "https://github.com/cosmic-utils/accounts", branch = "main", package = "accounts_core" }
+accounts = { path = "../cosmic-ext-accounts/crates/accounts", package = "accounts", features = ["calendar", "libcosmic"] }
 chrono = "0.4"
 chrono-tz = "0.10"
 css-color = "0.2.8"

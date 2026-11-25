@@ -1,13 +1,17 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
-use super::super::{AppModel, CalendarPopup, Message};
+use super::super::{AppModel, CalendarPopup, ContextPage, Message};
 use crate::config::Config;
-use crate::features::accounts::{self as accounts_feature, AccountsAction};
+use crate::features::accounts::{self as accounts_feature, AccountsAction, FormField};
 use crate::features::calendar_management::model::CalendarKey;
 use crate::fl;
 use cosmic::cosmic_config::{self, CosmicConfigEntry};
 use cosmic::prelude::*;
 use cosmic::Application;
+
+fn rediscover() -> Task<cosmic::Action<Message>> {
+    cosmic::task::message(Message::Accounts(AccountsAction::Discover))
+}
 
 impl AppModel {
     pub(in crate::app) fn update_accounts(
@@ -22,7 +26,9 @@ impl AppModel {
                 }
                 self.discovering_accounts = true;
                 return Task::perform(accounts_feature::discover(), |result| {
-                    cosmic::action::app(Message::Accounts(AccountsAction::Discovered(result)))
+                    cosmic::action::app(Message::Accounts(AccountsAction::Discovered(
+                        result,
+                    )))
                 });
             }
             AccountsAction::Discovered(result) => {
@@ -42,21 +48,102 @@ impl AppModel {
                 self.refresh_active_accounts();
                 return self.sync_active_accounts();
             }
-            AccountsAction::Changed => {
-                return cosmic::task::message(Message::Accounts(AccountsAction::Discover));
-            }
+            AccountsAction::Changed => return rediscover(),
             AccountsAction::OpenAccountsApp => {
-                return Task::perform(accounts_feature::open_add_account(), |result| {
-                    cosmic::action::app(Message::Accounts(AccountsAction::AccountsAppOpened(
-                        result,
+                self.show_context_page(ContextPage::Settings);
+                self.account_form = Some(Default::default());
+                self.account_action_error = None;
+            }
+            AccountsAction::AddProvider(provider) => {
+                self.account_action_error = None;
+                return Task::perform(accounts_feature::begin_provider(provider), |result| {
+                    cosmic::action::app(Message::Accounts(AccountsAction::AuthStarted(
+                        result.map_err(|error| error.text()),
                     )))
                 });
             }
-            AccountsAction::AccountsAppOpened(result) => {
-                if let Err(error) = result {
-                    tasks.push(self.toast(fl!("accounts-app-launch-error", error = error)));
+            AccountsAction::AuthStarted(result) => match result {
+                Ok(request) => {
+                    self.account_auth = Some(request.clone());
+                    self.account_action_error = None;
+                    return Task::perform(accounts_feature::complete(request), |result| {
+                        cosmic::action::app(Message::Accounts(AccountsAction::AuthCompleted(
+                            result.map_err(|error| error.text()),
+                        )))
+                    });
+                }
+                Err(error) => self.account_action_error = Some(error),
+            },
+            AccountsAction::AuthCompleted(result) => {
+                self.account_auth = None;
+                self.account_form = None;
+                match result {
+                    Ok(_) => {
+                        self.account_action_error = None;
+                        return rediscover();
+                    }
+                    Err(error) => self.account_action_error = Some(error),
                 }
             }
+            AccountsAction::CancelAuth(state) => {
+                accounts_feature::cancel(&state);
+                if self
+                    .account_auth
+                    .as_ref()
+                    .is_some_and(|request| request.state == state)
+                {
+                    self.account_auth = None;
+                }
+            }
+            AccountsAction::Reconnect(id) => {
+                self.account_action_error = None;
+                return Task::perform(accounts_feature::reconnect(id), |result| {
+                    cosmic::action::app(Message::Accounts(AccountsAction::AuthStarted(
+                        result.map_err(|error| error.text()),
+                    )))
+                });
+            }
+            AccountsAction::Remove(id) => {
+                self.account_action_error = None;
+                return Task::perform(accounts_feature::remove(id), |result| {
+                    cosmic::action::app(Message::Accounts(AccountsAction::Removed(
+                        result.map_err(|error| error.text()),
+                    )))
+                });
+            }
+            AccountsAction::Removed(result) => match result {
+                Ok(id) => {
+                    self.storage.lock().unwrap().clear_remote_snapshot(id);
+                    self.account_sync.remove(&id);
+                    self.refresh_active_accounts();
+                    return rediscover();
+                }
+                Err(error) => self.account_action_error = Some(error),
+            },
+            AccountsAction::AddCalDav(form) => {
+                self.account_form = Some(form);
+                self.account_action_error = None;
+            }
+            AccountsAction::FormFieldChanged(field, value) => {
+                if let Some(form) = self.account_form.as_mut() {
+                    match field {
+                        FormField::Url => form.url = value,
+                        FormField::Username => form.username = value,
+                        FormField::Password => form.password = value,
+                    }
+                }
+            }
+            AccountsAction::SubmitCalDav => {
+                if let Some(form) = self.account_form.clone() {
+                    self.account_action_error = None;
+                    return Task::perform(accounts_feature::add_caldav(form), |result| {
+                        cosmic::action::app(Message::Accounts(AccountsAction::AuthCompleted(
+                            result.map_err(|error| error.text()),
+                        )))
+                    });
+                }
+            }
+            AccountsAction::CancelForm => self.account_form = None,
             AccountsAction::Sync(id) => return self.sync_account(id),
             AccountsAction::Synced(id, request_id, result) => {
                 if !matches!(self.account_sync.get(&id), Some(accounts_feature::SyncStatus::Running { request_id: current, .. }) if *current == request_id)
@@ -81,13 +168,11 @@ impl AppModel {
                     Err(error) => {
                         if matches!(
                             error,
-                            accounts_feature::Error::AccessDenied
-                                | accounts_feature::Error::ServerAccessDenied
+                            accounts_feature::Error::ServerAccessDenied
                                 | accounts_feature::Error::GoogleAccessDenied
                                 | accounts_feature::Error::GoogleApiDisabled
                                 | accounts_feature::Error::GoogleInsufficientScope
                                 | accounts_feature::Error::MicrosoftAccessDenied
-                                | accounts_feature::Error::Disabled
                                 | accounts_feature::Error::NeedsReauth
                         ) {
                             self.storage.lock().unwrap().clear_remote_snapshot(id);
@@ -121,6 +206,19 @@ impl AppModel {
                         Err(err) => tasks
                             .push(self.toast(fl!("account-save-error", error = err.to_string()))),
                     }
+                }
+                tasks.push(Task::perform(
+                    accounts_feature::set_enabled(id, enabled),
+                    |result| {
+                        cosmic::action::app(Message::Accounts(AccountsAction::ActionFailed(
+                            result.err().map_or_else(String::new, |error| error.text()),
+                        )))
+                    },
+                ));
+            }
+            AccountsAction::ActionFailed(error) => {
+                if !error.is_empty() {
+                    tasks.push(self.toast(fl!("account-save-error", error = error)));
                 }
             }
         }
