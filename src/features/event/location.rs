@@ -180,13 +180,11 @@ pub fn photon_api_url(endpoint: &str) -> Option<reqwest::Url> {
     if !url.path().ends_with("/api") {
         url.path_segments_mut().ok()?.push("api");
     }
-    // The public service uses a trailing slash on its search endpoint.
     url.path_segments_mut().ok()?.push("");
     Some(url)
 }
 
 pub async fn find_online(query: String, endpoint: reqwest::Url) -> Result<OnlinePlaces, ()> {
-    // Do not start a request until the user pauses typing.
     tokio::time::sleep(Duration::from_millis(400)).await;
     static CLIENT: LazyLock<Result<reqwest::Client, reqwest::Error>> = LazyLock::new(|| {
         reqwest::Client::builder()
@@ -195,7 +193,6 @@ pub async fn find_online(query: String, endpoint: reqwest::Url) -> Result<Online
             .user_agent(concat!("cosmic-ext-calendar/", env!("CARGO_PKG_VERSION")))
             .build()
     });
-    // Keep search text out of diagnostic messages.
     let response = CLIENT
         .as_ref()
         .map_err(|_| ())?

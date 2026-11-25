@@ -60,8 +60,6 @@ pub(crate) fn resolve_series_occurrence<'a>(
 
 impl Event {
     fn rule_for_expansion<'a>(&self, rule: &'a str) -> std::borrow::Cow<'a, str> {
-        // The recurrence engine expands civil dates in UTC. Normalize its
-        // input to that clock, while keeping the original rule for exchange.
         if !self.floating && !matches!(self.time, EventTime::AllDay { .. }) {
             return std::borrow::Cow::Borrowed(rule);
         }

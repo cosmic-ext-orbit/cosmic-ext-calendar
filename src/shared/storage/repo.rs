@@ -319,9 +319,6 @@ impl LocalStorage {
                     "destination calendar no longer exists".into(),
                 ));
             }
-            // Keep the existing file location when moving an event. The
-            // calendar in the payload owns it, and one atomic write changes
-            // that ownership without leaving a second copy on disk.
             let path = self
                 .event_files
                 .get(&event.id)
@@ -446,8 +443,6 @@ impl LocalStorage {
             if owner == id {
                 self.remove_event_file(replacement.id)?;
             } else {
-                // A later split is an independent series. Keep the edited
-                // occurrence attached to it if the predecessor is removed.
                 replacement.series_id = Some(owner);
                 replacement.recurrence_id = Some(slot);
                 replacement.ics_uid = self
@@ -461,8 +456,6 @@ impl LocalStorage {
     }
 
     fn remove_event_file(&mut self, id: EventId) -> Result<()> {
-        // Remove older copies first so a failed deletion cannot make one
-        // reappear as the current event on the next startup.
         for path in self
             .duplicate_files
             .get(&id)

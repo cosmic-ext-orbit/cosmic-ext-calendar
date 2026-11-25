@@ -18,8 +18,6 @@ pub(super) fn export_zones(events: &[Event]) -> impl Iterator<Item = String> {
         };
         let first = start.year();
         let last = if event.is_recurring() {
-            // chrono-tz provides the published future transitions; include
-            // the entire supported recurrence horizon for ordinary exports.
             end.year().max(2100)
         } else {
             end.year()
@@ -65,8 +63,6 @@ fn export_zone(zone: Tz, first: i32, last: i32) -> Option<String> {
         let next = (sample + Duration::hours(12)).min(last);
         let offset = *next.with_timezone(&zone).offset();
         if offset != previous {
-            // Find the exact transition instant between samples. DTSTART is
-            // expressed in the local time in effect before the transition.
             let mut low = sample.timestamp();
             let mut high = next.timestamp();
             while high - low > 1 {

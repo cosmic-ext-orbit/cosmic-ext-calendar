@@ -172,8 +172,6 @@ impl Sidebar {
                 }
             };
             let icon = icon.icon().size(16);
-            // Keep the native icon slot so labels stay in place while the
-            // spinner is drawn above it.
             let icon = if row.syncing {
                 widget::icon::from_raster_pixels(1, 1, &[0u8; 4][..])
                     .icon()
@@ -188,8 +186,6 @@ impl Sidebar {
                 .icon(icon)
                 .data(row.item.clone())
                 .id();
-            // The nav widget's trailing action slot uses the "closable"
-            // flag. Calendar renders it as a refresh action for accounts.
             nav.closable_set(id, row.refresh);
         }
         self.rows = rows;
@@ -220,8 +216,6 @@ impl AppModel {
             .spacing(row_spacing)
             .style(theme::SegmentedButton::NavBar);
 
-        // Native navigation rows keep their layout, focus and context menus.
-        // Both layers scroll together so spinners stay on their account rows.
         let mut indicators =
             widget::column::with_capacity(self.sidebar.rows.len()).spacing(row_spacing);
         let height = Length::Fixed(f32::from(ROW_HEIGHT));

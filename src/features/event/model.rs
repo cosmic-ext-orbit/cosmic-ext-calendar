@@ -38,9 +38,6 @@ pub struct Attendee {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Reminder {
     /// Minutes before the event start that this reminder should fire.
-    ///
-    /// Stored as a plain integer rather than `time::Duration` to avoid a
-    /// custom serde implementation.
     pub minutes_before: i64,
 }
 

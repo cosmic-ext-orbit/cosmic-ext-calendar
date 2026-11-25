@@ -89,10 +89,8 @@ fn schedule_row(state: &EventEditorState, is_start: bool) -> Element<'_, Message
         .font(cosmic::font::default())
         .size(14)
         .width(Length::Fill);
-        // The combo box menu inherits the window's transparency unless scoped here.
         let mut menu_theme = cosmic::theme::active();
         menu_theme.transparent = false;
-        // The native input has no intrinsic text width. Size it using the same font and padding.
         let measure = if value.chars().count() < 5 {
             "00:00".to_owned()
         } else {

@@ -36,10 +36,7 @@ pub struct Config {
     pub display_timezone: String,
     pub app_theme: AppTheme,
     pub photon_endpoint: String,
-    /// Accounts whose calendar data Calendar should ignore locally. The
-    /// broker still owns whether the Calendar service is available at all.
     pub disabled_accounts: BTreeSet<Uuid>,
-    /// Remote calendars hidden in the sidebar, keyed by account and collection.
     pub hidden_remote_calendars: BTreeMap<Uuid, BTreeSet<String>>,
 }
 

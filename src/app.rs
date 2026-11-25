@@ -120,33 +120,25 @@ pub struct AppModel {
     config: Config,
     display_timezone_options: Vec<String>,
     ics_import: IcsImportState,
-    // Calendar data that persists between application runs.
     calendar: LocalCalendar,
     calendar_popup: Option<OpenCalendarPopup>,
     calendar_clipboard: Option<CalendarClipboard>,
     calendar_click: Option<(CalendarClick, std::time::Instant)>,
-    // Local calendar/event storage, persisted to disk as JSON.
     storage: Arc<Mutex<LocalStorage>>,
     toasts: widget::Toasts<Message>,
     storage_read_only: bool,
     calendar_to_archive: Option<(CalendarId, String)>,
     calendar_archive_busy: bool,
-    // State of the event editor dialog, when open.
     editing_event: Option<EventEditorState>,
     event_notes: widget::text_editor::Content,
     event_locations: LocationSuggestions,
     location_lookup: Option<(uuid::Uuid, cosmic::iced::task::Handle)>,
     photon_endpoint_input: Option<String>,
     calendar_form: Option<CalendarForm>,
-    // Account groups and the rows currently shown in the calendar sidebar.
     sidebar: sidebar::Sidebar,
-    // Current text in the header search bar; non-empty replaces the main
-    // view with search results.
     search_query: String,
     checking_alerts: bool,
     keep_running: bool,
-    // Accounts-backed calendar sources. The embedded manager owns account
-    // state; these fields are a local cache used by Settings and filtering.
     accounts: Vec<accounts_feature::Account>,
     accounts_checked: bool,
     watched_account_ids: Vec<uuid::Uuid>,
@@ -207,10 +199,8 @@ impl cosmic::Application for AppModel {
         core: cosmic::Core,
         flags: Self::Flags,
     ) -> (Self, Task<cosmic::Action<Self::Message>>) {
-        // Create a nav bar with three page items.
         let nav = nav_bar::Model::default();
 
-        // Create a tab bar with three page items.
         let tabs = widget::segmented_button::Model::builder()
             .insert(|b| {
                 b.text(fl!("month"))
@@ -1191,7 +1181,6 @@ impl AppModel {
     }
 
     fn update_drawer_layout(&mut self) {
-        // Below this width the native drawer would squeeze the seven day columns.
         let overlay = self.context_page != ContextPage::DayAgenda
             || self.window_width / self.core.scale_factor() < 1_000.0;
         if self.core.window.context_is_overlay != overlay {

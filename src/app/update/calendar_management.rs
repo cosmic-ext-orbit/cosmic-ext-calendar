@@ -48,7 +48,6 @@ impl AppModel {
             CalendarManagementMessage::CalendarColorPicker(update) => {
                 if let Some(form) = self.calendar_form.as_mut().filter(|form| !form.writing) {
                     match update {
-                        // Keep the picker open during slider and text input interactions.
                         ColorPickerUpdate::ActionFinished => {}
                         ColorPickerUpdate::Cancel => {
                             form.picker = CalendarForm::color_picker(form.color.as_deref());

@@ -17,9 +17,6 @@ use crate::{
 use super::{AccountsAction, SyncStatus};
 
 /// Accounts page rendered inside Calendar's dedicated context drawer.
-///
-/// The shared accounts panel owns the narrow layout: account cards, a full
-/// width provider picker, CalDAV fields, and the browser sign-in wait state.
 pub fn accounts_view(app: &AppModel) -> Element<'_, Message> {
     let rows: Vec<AccountRow<'_>> = app
         .accounts()

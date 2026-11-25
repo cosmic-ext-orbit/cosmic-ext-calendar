@@ -345,8 +345,6 @@ fn resolve(
         return (scope != Scope::Calendar && !repeat && status == event::Status::Captured)
             .then_some(Action::Dismiss);
     }
-    // Focused COSMIC buttons already activate on Enter, including Ctrl+Enter.
-    // Ctrl+S remains available when an editor or dialog has keyboard focus.
     if status == event::Status::Captured
         && (scope == Scope::Calendar || key == &Key::Named(Named::Enter))
     {

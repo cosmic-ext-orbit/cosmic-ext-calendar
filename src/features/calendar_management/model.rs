@@ -27,7 +27,6 @@ pub struct LocalCalendarMeta {
     pub description: Option<String>,
     /// Hex color, e.g. "#3584e4".
     pub color: Option<String>,
-    /// Whether events on this calendar should currently be shown.
     pub visible: bool,
     #[serde(default)]
     pub archived: bool,

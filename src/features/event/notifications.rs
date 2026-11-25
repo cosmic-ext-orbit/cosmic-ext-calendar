@@ -80,8 +80,6 @@ impl DeliveryHistory {
                 failed = true;
             }
         }
-        // Leave the previous checkpoint in place after a delivery error so
-        // failed alerts can be retried without repeating successful ones.
         self.last_checked = Some(if failed { since } else { now });
     }
 }
@@ -110,8 +108,6 @@ pub fn check_alerts(remote_events: &[Event]) -> crate::Result<()> {
         Err(TryLockError::Error(err)) => return Err(err.into()),
     }
 
-    // Read calendars and the journal under the delivery lock so a worker and
-    // a window can run concurrently without sending the same alert.
     let storage = LocalStorage::load()?;
     let path = root.join("notification-delivery.json");
     let mut history = DeliveryHistory::load(&path)?;
@@ -120,8 +116,6 @@ pub fn check_alerts(remote_events: &[Event]) -> crate::Result<()> {
         .filter(|event| matches!(event.calendar, CalendarKey::Local(_)));
     history.deliver(local_events.chain(remote_events), OffsetDateTime::now_utc(), notify);
     if storage.load_error().is_some() {
-        // Deliver alerts from readable records without skipping over a
-        // calendar or event that becomes readable again on the next pass.
         history.last_checked = previous_checkpoint;
     }
     write_json_atomic(&path, &history)

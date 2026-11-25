@@ -142,7 +142,6 @@ fn day_column<'a>(
                 0.0
             };
             let end = if item.last == day {
-                // Occurrences store the last included instant.
                 time_position(
                     item.display_end.time() - Time::MIDNIGHT + Duration::NANOSECOND,
                     slot_height,
@@ -177,7 +176,6 @@ fn day_column<'a>(
         }
         group_end = group_end.max(block.end);
 
-        // Reuse the first lane whose previous event has ended.
         match lanes.iter_mut().find(|lane| {
             lane.last()
                 .is_some_and(|previous| previous.end <= block.start)

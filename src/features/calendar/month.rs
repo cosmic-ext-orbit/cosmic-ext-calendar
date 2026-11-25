@@ -113,8 +113,6 @@ fn occurrences_with_calendars<'a>(
             EventTime::Timed { start, end } => (end - start, false),
         };
         let duration = duration.max(Duration::ZERO);
-        // Look back by the event duration to include occurrences already in progress.
-        // A UTC day of padding covers local offsets and the recurrence query boundaries.
         let lower = utc_midnight(first)
             .saturating_sub(duration)
             .saturating_sub(Duration::days(1));
@@ -291,7 +289,6 @@ fn week_view<'a>(
     }
 
     if !compact {
-        // Place bands before single-day rows to keep each span in one lane.
         for event in week_items
             .iter()
             .copied()

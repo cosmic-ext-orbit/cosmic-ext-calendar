@@ -72,7 +72,6 @@ impl GraphDateTime {
     }
 
     fn in_utc(&self) -> Result<OffsetDateTime, Error> {
-        // Graph returns UTC wall times without an offset when UTC is requested.
         let parsed = match chrono::DateTime::parse_from_rfc3339(&self.date_time) {
             Ok(date) => date.to_utc(),
             Err(_) if self.time_zone.eq_ignore_ascii_case("UTC") => {
@@ -127,7 +126,6 @@ async fn fetch(
     let mut snapshot = Snapshot::default();
     let mut seen_calendars = HashSet::new();
 
-    // calendarView expands series and returns exceptions within a bounded range.
     let start = (now - TimeDuration::days(365)).date();
     let end = (now + TimeDuration::days(366)).date();
     for calendar in calendars {
@@ -233,8 +231,6 @@ impl GraphEvent {
         let start = self.start.ok_or(Error::Failed)?;
         let end = self.end.ok_or(Error::Failed)?;
         let time = if self.is_all_day {
-            // Keep the calendar dates Graph supplies. An offset conversion
-            // can move midnight to the preceding day.
             let (start, end) = (start.date()?, end.date()?);
             if end <= start {
                 return Err(Error::Failed);

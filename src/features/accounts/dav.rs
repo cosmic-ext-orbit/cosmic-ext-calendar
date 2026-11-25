@@ -250,8 +250,6 @@ fn forbidden_error(google: bool, insufficient_scope: bool, body: &str) -> Reques
         return Error::GoogleInsufficientScope.into();
     }
 
-    // Google APIs may return machine-readable reasons. Never surface the raw
-    // response, which can include account and OAuth project identifiers.
     if let Ok(payload) = serde_json::from_str::<serde_json::Value>(body) {
         let error = &payload["error"];
         for field in ["details", "errors"] {
@@ -284,8 +282,6 @@ fn endpoint(account: &Account, credentials: &CalendarCredentials) -> Result<Url,
     {
         return Err(Error::Unsupported);
     }
-    // The bundled Google manifest advertises the API root. Google's
-    // principal endpoint uses the primary calendar ID (the account email).
     if account.provider == "google"
         && origin.as_str() == "https://apidata.googleusercontent.com/caldav/v2/"
     {
@@ -488,7 +484,6 @@ fn parse_event_changes(
         parsed.retain(|event| matches!(event.kind, EventKind::Event));
         let mut ids = HashMap::new();
         for event in &mut parsed {
-            // CalDAV stores a recurring event and its overrides in one resource.
             let identity = format!(
                 "{calendar_id}\n{resource}\n{:?}\n{:?}",
                 event.ics_uid,
