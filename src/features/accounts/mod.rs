@@ -7,7 +7,7 @@ pub mod view;
 
 pub use accounts::ui::FormField;
 use accounts::{
-    Account as ManagedAccount, Accounts, CalDavSettings, Config, Endpoint, Error as AccountsError,
+    Account as ManagedAccount, Accounts, CalDavSettings, ClientConfig, Config, Endpoint, Error as AccountsError,
     Provider, SecretString, Service,
 };
 use tokio::sync::OnceCell;
@@ -194,7 +194,26 @@ pub struct Discovery {
 pub async fn manager() -> Result<&'static Accounts, Error> {
     MANAGER
         .get_or_try_init(|| async {
+            // Public OAuth settings for these installed desktop clients.
             let config = Config::new(APP_ID)
+                .with_client(
+                    Provider::Google,
+                    Service::Calendar,
+                    ClientConfig {
+                        client_id: "55442946345-2pe09fdpbsn9edchqir97j0thrms0h3s.apps.googleusercontent.com".into(),
+                        client_secret: Some(SecretString::new("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")),
+                        redirect_uri: None,
+                    },
+                )
+                .with_client(
+                    Provider::Microsoft,
+                    Service::Calendar,
+                    ClientConfig {
+                        client_id: "e101661d-a2f1-40ac-91b1-424274317b70".into(),
+                        client_secret: None,
+                        redirect_uri: None,
+                    },
+                )
                 .with_client_from_env(Provider::Google, Service::Calendar)
                 .with_client_from_env(Provider::Microsoft, Service::Calendar);
             Accounts::new(config).await

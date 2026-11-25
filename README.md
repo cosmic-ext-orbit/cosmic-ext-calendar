@@ -28,12 +28,11 @@ separate Accounts installation or broker is required. Enabled accounts refresh
 automatically; use the refresh button beside an account in the sidebar to retry
 immediately.
 
-OAuth client registrations are supplied by the packager, not committed to this
-repository. Set `ACCOUNTS_GOOGLE_CALENDAR_CLIENT_ID` and
-`ACCOUNTS_MICROSOFT_CALENDAR_CLIENT_ID` before launching Calendar. For registrations
-that require a secret, also set the matching `_CLIENT_SECRET`; desktop clients may use
-PKCE without a secret. Google desktop registrations must use the loopback redirect
-`http://127.0.0.1/callback`.
+Calendar ships with Google and Microsoft desktop OAuth registrations. To use a custom
+registration, set `ACCOUNTS_GOOGLE_CALENDAR_CLIENT_ID` or
+`ACCOUNTS_MICROSOFT_CALENDAR_CLIENT_ID` before launching Calendar. If the custom
+registration requires a secret, also set the matching `_CLIENT_SECRET`. The default
+loopback redirect is `http://127.0.0.1/callback`.
 
 Microsoft accounts use Microsoft Graph and the delegated `Calendars.Read` permission.
 If this permission was added after sign-in, use **Reconnect** in Calendar. Calendar
