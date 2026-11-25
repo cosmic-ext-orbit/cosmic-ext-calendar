@@ -14,7 +14,10 @@
     "--talk-name=org.freedesktop.Notifications",
     "--talk-name=com.system76.CosmicSettingsDaemon",
     "--talk-name=com.system76.CosmicSettingsDaemon.*",
-    "--filesystem=xdg-config/cosmic:ro"
+    "--filesystem=xdg-config/cosmic:ro",
+    "--env=ACCOUNTS_GOOGLE_CALENDAR_CLIENT_ID=55442946345-2pe09fdpbsn9edchqir97j0thrms0h3s.apps.googleusercontent.com",
+    "--env=ACCOUNTS_GOOGLE_CALENDAR_CLIENT_SECRET=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",
+    "--env=ACCOUNTS_MICROSOFT_CALENDAR_CLIENT_ID=e101661d-a2f1-40ac-91b1-424274317b70"
   ],
   "build-options": {
     "append-path": "/usr/lib/sdk/rust-stable/bin"
