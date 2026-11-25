@@ -5,6 +5,7 @@ mod graph;
 pub mod subscription;
 pub mod view;
 
+pub use accounts::ui::FormField;
 use accounts::{
     Account as ManagedAccount, Accounts, CalDavSettings, Config, Endpoint, Error as AccountsError,
     Provider, SecretString, Service,
@@ -160,7 +161,10 @@ pub enum AccountsAction {
     SetLocallyEnabled(Uuid, bool),
     Sync(Uuid),
     Synced(Uuid, u64, Result<Snapshot, Error>),
+    OpenAccounts,
+    CloseAccounts,
     AddProvider(Provider),
+    OpenBrowser,
     AuthStarted(Result<AuthRequest, String>),
     AuthCompleted(Result<ManagedAccount, String>),
     CancelAuth(String),
@@ -172,13 +176,6 @@ pub enum AccountsAction {
     SubmitCalDav,
     CancelForm,
     ActionFailed(String),
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum FormField {
-    Url,
-    Username,
-    Password,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -206,11 +203,6 @@ pub async fn manager() -> Result<&'static Accounts, Error> {
         .map_err(Error::from)
 }
 
-fn open_url(request: &AuthRequest) -> Result<(), Error> {
-    open::that(&request.url)
-        .map_err(|error| Error::Authentication(format!("could not open browser: {error}")))
-}
-
 pub async fn discover() -> Result<Discovery, Error> {
     let accounts = manager().await?;
     let managed = accounts.list(Service::Calendar).await;
@@ -223,19 +215,21 @@ pub async fn discover() -> Result<Discovery, Error> {
 }
 
 pub async fn begin_provider(provider: Provider) -> Result<AuthRequest, Error> {
-    let request = manager().await?.begin_auth(provider, Service::Calendar).await?;
-    open_url(&request)?;
-    Ok(request)
+    accounts::ui::begin_sign_in(manager().await?, provider, Service::Calendar)
+        .await
+        .map_err(Error::from)
 }
 
 pub async fn reconnect(id: Uuid) -> Result<AuthRequest, Error> {
-    let request = manager().await?.reconnect(id).await?;
-    open_url(&request)?;
-    Ok(request)
+    manager().await?.reconnect(id).await.map_err(Error::from)
 }
 
 pub async fn complete(request: AuthRequest) -> Result<ManagedAccount, Error> {
-    manager().await?.complete_auth(request).await.map_err(Error::from)
+    manager()
+        .await?
+        .complete_auth(request)
+        .await
+        .map_err(Error::from)
 }
 
 pub fn cancel(state: &str) {

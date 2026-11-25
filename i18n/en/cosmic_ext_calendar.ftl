@@ -271,3 +271,9 @@ shortcut-next-event = Next event on the selected day
 
 local-calendars = Local calendars
 sidebar-online-account = Online account
+accounts-no-providers = No calendar providers are available in this build.
+accounts-add-title = Add a calendar account
+accounts-add-body = Choose a provider, then finish signing in in your browser.
+accounts-finish-title = Finish signing in
+accounts-finish-body = We opened { $provider } in your browser. Finish signing in there, and the account appears here.
+accounts-open-browser = Open browser again

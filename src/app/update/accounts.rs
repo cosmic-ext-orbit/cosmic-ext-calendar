@@ -26,62 +26,86 @@ impl AppModel {
                 }
                 self.discovering_accounts = true;
                 return Task::perform(accounts_feature::discover(), |result| {
-                    cosmic::action::app(Message::Accounts(AccountsAction::Discovered(
-                        result,
-                    )))
+                    cosmic::action::app(Message::Accounts(AccountsAction::Discovered(result)))
                 });
             }
             AccountsAction::Discovered(result) => {
                 self.discovering_accounts = false;
                 self.accounts_checked = true;
-                match result {
+                let alert = match result {
                     Ok(discovery) => {
                         self.accounts = discovery.accounts;
                         self.watched_account_ids = discovery.watched_ids;
-                        self.accounts_error = None;
+                        None
                     }
                     Err(error) => {
                         self.accounts.clear();
-                        self.accounts_error = Some(error);
+                        Some(error.text())
                     }
-                }
+                };
                 self.refresh_active_accounts();
-                return self.sync_active_accounts();
+                tasks.push(self.sync_active_accounts());
+                if let Some(message) = alert {
+                    tasks.push(self.toast(message));
+                }
+                return Task::batch(tasks);
             }
             AccountsAction::Changed => return rediscover(),
+            AccountsAction::OpenAccounts => {
+                self.account_adding = true;
+                return Task::none();
+            }
+            AccountsAction::CloseAccounts => {
+                self.account_adding = false;
+                return Task::none();
+            }
             AccountsAction::AddProvider(provider) => {
-                self.account_action_error = None;
                 return Task::perform(accounts_feature::begin_provider(provider), |result| {
                     cosmic::action::app(Message::Accounts(AccountsAction::AuthStarted(
                         result.map_err(|error| error.text()),
                     )))
                 });
             }
+            AccountsAction::OpenBrowser => {
+                if let Some(request) = self.account_auth.clone() {
+                    if let Err(error) = accounts::ui::open_sign_in_url(&request) {
+                        return self.toast(error.to_string());
+                    }
+                }
+                return Task::none();
+            }
             AccountsAction::AuthStarted(result) => match result {
                 Ok(request) => {
                     self.account_auth = Some(request.clone());
-                    self.account_action_error = None;
-                    return Task::perform(accounts_feature::complete(request), |result| {
-                        cosmic::action::app(Message::Accounts(AccountsAction::AuthCompleted(
-                            result.map_err(|error| error.text()),
-                        )))
-                    });
+                    self.account_adding = false;
+                    let completion = request.clone();
+                    let mut tasks = vec![Task::perform(
+                        accounts_feature::complete(completion),
+                        |result| {
+                            cosmic::action::app(Message::Accounts(AccountsAction::AuthCompleted(
+                                result.map_err(|error| error.text()),
+                            )))
+                        },
+                    )];
+                    if let Err(error) = accounts::ui::open_sign_in_url(&request) {
+                        tasks.push(self.toast(error.to_string()));
+                    }
+                    return Task::batch(tasks);
                 }
-                Err(error) => self.account_action_error = Some(error),
+                Err(error) => return self.toast(error),
             },
             AccountsAction::AuthCompleted(result) => {
                 self.account_auth = None;
+                self.account_adding = false;
                 self.account_form = None;
                 match result {
-                    Ok(_) => {
-                        self.account_action_error = None;
-                        return rediscover();
-                    }
-                    Err(error) => self.account_action_error = Some(error),
+                    Ok(_) => return rediscover(),
+                    Err(error) => return self.toast(error),
                 }
             }
             AccountsAction::CancelAuth(state) => {
                 accounts_feature::cancel(&state);
+                self.account_adding = false;
                 if self
                     .account_auth
                     .as_ref()
@@ -91,7 +115,6 @@ impl AppModel {
                 }
             }
             AccountsAction::Reconnect(id) => {
-                self.account_action_error = None;
                 return Task::perform(accounts_feature::reconnect(id), |result| {
                     cosmic::action::app(Message::Accounts(AccountsAction::AuthStarted(
                         result.map_err(|error| error.text()),
@@ -99,7 +122,6 @@ impl AppModel {
                 });
             }
             AccountsAction::Remove(id) => {
-                self.account_action_error = None;
                 return Task::perform(accounts_feature::remove(id), |result| {
                     cosmic::action::app(Message::Accounts(AccountsAction::Removed(
                         result.map_err(|error| error.text()),
@@ -113,11 +135,11 @@ impl AppModel {
                     self.refresh_active_accounts();
                     return rediscover();
                 }
-                Err(error) => self.account_action_error = Some(error),
+                Err(error) => return self.toast(error),
             },
             AccountsAction::AddCalDav(form) => {
                 self.account_form = Some(form);
-                self.account_action_error = None;
+                self.account_adding = false;
             }
             AccountsAction::FormFieldChanged(field, value) => {
                 if let Some(form) = self.account_form.as_mut() {
@@ -125,12 +147,12 @@ impl AppModel {
                         FormField::Url => form.url = value,
                         FormField::Username => form.username = value,
                         FormField::Password => form.password = value,
+                        _ => {}
                     }
                 }
             }
             AccountsAction::SubmitCalDav => {
                 if let Some(form) = self.account_form.clone() {
-                    self.account_action_error = None;
                     return Task::perform(accounts_feature::add_caldav(form), |result| {
                         cosmic::action::app(Message::Accounts(AccountsAction::AuthCompleted(
                             result.map_err(|error| error.text()),

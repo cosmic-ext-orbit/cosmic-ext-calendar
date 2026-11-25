@@ -234,3 +234,9 @@ shortcut-next-event = Następne wydarzenie wybranego dnia
 
 local-calendars = Kalendarze lokalne
 sidebar-online-account = Konto online
+accounts-no-providers = Ta wersja nie obsługuje żadnych dostawców kalendarzy.
+accounts-add-title = Dodaj konto kalendarza
+accounts-add-body = Wybierz dostawcę, a następnie zakończ logowanie w przeglądarce.
+accounts-finish-title = Zakończ logowanie
+accounts-finish-body = Otworzyliśmy { $provider } w przeglądarce. Zakończ tam logowanie, a konto pojawi się tutaj.
+accounts-open-browser = Otwórz przeglądarkę ponownie

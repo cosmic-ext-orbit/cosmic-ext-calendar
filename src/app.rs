@@ -148,7 +148,6 @@ pub struct AppModel {
     // Accounts-backed calendar sources. The embedded manager owns account
     // state; these fields are a local cache used by Settings and filtering.
     accounts: Vec<accounts_feature::Account>,
-    accounts_error: Option<accounts_feature::Error>,
     accounts_checked: bool,
     watched_account_ids: Vec<uuid::Uuid>,
     active_accounts: BTreeSet<uuid::Uuid>,
@@ -156,8 +155,8 @@ pub struct AppModel {
     next_account_sync: u64,
     discovering_accounts: bool,
     account_auth: Option<accounts_feature::AuthRequest>,
+    account_adding: bool,
     account_form: Option<accounts_feature::AccountForm>,
-    account_action_error: Option<String>,
 }
 
 /// Messages emitted by the application and its widgets.
@@ -286,7 +285,6 @@ impl cosmic::Application for AppModel {
             checking_alerts: false,
             keep_running: flags.keep_running,
             accounts: Vec::new(),
-            accounts_error: None,
             accounts_checked: false,
             watched_account_ids: Vec::new(),
             active_accounts: BTreeSet::new(),
@@ -294,8 +292,8 @@ impl cosmic::Application for AppModel {
             next_account_sync: 0,
             discovering_accounts: false,
             account_auth: None,
+            account_adding: false,
             account_form: None,
-            account_action_error: None,
         };
 
         let mut tasks = Vec::new();
@@ -553,7 +551,7 @@ impl cosmic::Application for AppModel {
             return None;
         }
 
-        Some(match self.context_page {
+        let mut drawer = match self.context_page {
             ContextPage::DayAgenda => {
                 let storage = self.storage.lock().unwrap();
                 context_drawer::context_drawer(
@@ -593,7 +591,9 @@ impl cosmic::Application for AppModel {
                 Message::ToggleContextPage(ContextPage::ArchivedCalendars),
             )
             .title(fl!("archived-calendars")),
-        })
+        };
+        drawer.content = widget::toaster(&self.toasts, drawer.content);
+        Some(drawer)
     }
 
     /// Displays calendar creation, calendar deletion confirmation, or the event editor.
@@ -689,7 +689,10 @@ impl cosmic::Application for AppModel {
 
         let content = widget::column(vec![tabs, active_tab]).spacing(spacing().space_xxs);
         let calendar = self.attach_calendar_popup(content, None);
-        if self.editing_event.is_some() || self.calendar_form.is_some() {
+        if self.core.window.show_context
+            || self.editing_event.is_some()
+            || self.calendar_form.is_some()
+        {
             calendar
         } else {
             widget::toaster(&self.toasts, calendar)
@@ -812,6 +815,9 @@ impl cosmic::Application for AppModel {
                 Message::CalendarManagement(CalendarManagementMessage::CloseCalendarForm)
             };
             return cosmic::task::message(message);
+        }
+        if self.account_adding {
+            return cosmic::task::message(Message::Accounts(AccountsAction::CloseAccounts));
         }
         if self.account_form.is_some() {
             return cosmic::task::message(Message::Accounts(AccountsAction::CancelForm));
@@ -1332,10 +1338,6 @@ impl AppModel {
         self.accounts_checked
     }
 
-    pub(crate) fn accounts_error(&self) -> Option<&accounts_feature::Error> {
-        self.accounts_error.as_ref()
-    }
-
     pub(crate) fn account_locally_enabled(&self, id: uuid::Uuid) -> bool {
         !self.config.disabled_accounts.contains(&id)
     }
@@ -1344,12 +1346,12 @@ impl AppModel {
         self.account_auth.as_ref()
     }
 
-    pub(crate) fn account_form(&self) -> Option<&accounts_feature::AccountForm> {
-        self.account_form.as_ref()
+    pub(crate) fn account_adding(&self) -> bool {
+        self.account_adding
     }
 
-    pub(crate) fn account_action_error(&self) -> Option<&str> {
-        self.account_action_error.as_deref()
+    pub(crate) fn account_form(&self) -> Option<&accounts_feature::AccountForm> {
+        self.account_form.as_ref()
     }
 
     fn remote_calendar_is_visible(&self, account_id: uuid::Uuid, calendar_id: &str) -> bool {
