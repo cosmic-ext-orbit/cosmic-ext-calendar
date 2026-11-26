@@ -2,3 +2,4 @@ target
 /.flatpak-builder/
 /.flatpak-cargo/
 /dist/
+**/.DS_Store

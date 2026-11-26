@@ -1545,16 +1545,17 @@ impl AppModel {
     }
 
     fn open_main_window(&mut self) -> Task<cosmic::Action<Message>> {
-        let mut settings = window::Settings {
+        let settings = window::Settings {
             min_size: Some(MIN_WINDOW_SIZE),
             decorations: false,
             transparent: true,
+            #[cfg(target_os = "linux")]
+            platform_specific: window::settings::PlatformSpecific {
+                application_id: <Self as cosmic::Application>::APP_ID.to_owned(),
+                ..Default::default()
+            },
             ..window::Settings::default()
         };
-        #[cfg(target_os = "linux")]
-        {
-            settings.platform_specific.application_id = <Self as cosmic::Application>::APP_ID.to_owned();
-        }
 
         let (id, open) = window::open(settings);
         self.core.set_main_window_id(Some(id));

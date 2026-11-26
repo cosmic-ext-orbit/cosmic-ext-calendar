@@ -10,7 +10,7 @@ repository = "https://github.com/cosmic-utils/cosmic-ext-calendar"
 vergen = { version = "8", features = ["git", "gitcl"] }
 
 [dependencies]
-accounts = { git = "https://github.com/cosmic-utils/accounts", features = ["calendar", "libcosmic"] }
+accounts = { git = "https://github.com/cosmic-ext-orbit/cosmic-ext-accounts", features = ["calendar", "libcosmic"] }
 chrono = "0.4"
 chrono-tz = "0.10"
 css-color = "0.2.8"
@@ -62,6 +62,10 @@ features = [
     # Native file dialogs (used for ICS import/export)
     "xdg-portal",
 ]
+
+[target.'cfg(any(target_os = "macos", windows))'.dependencies.libcosmic]
+git = "https://github.com/pop-os/libcosmic.git"
+features = ["rfd"]
 
 # Uncomment to test a locally-cloned libcosmic
 # [patch.'https://github.com/pop-os/libcosmic']
